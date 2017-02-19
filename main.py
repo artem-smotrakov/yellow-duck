@@ -23,6 +23,19 @@ HTTP/1.0 200 OK
 </html>
 """
 
+BYE = b"""\
+HTTP/1.0 200 OK
+
+<html>
+ <head>
+  <title>Yellow Duck configuration</title>
+ </head>
+ <body>
+  The board is going to reboot, and try to connect to specified network.
+ </body>
+</html>
+"""
+
 CONFIG = 'wifi.conf'
 SERVER_PORT=443
 INDENT = '    '
@@ -99,7 +112,12 @@ def start_local_server(use_stream = True):
                         # and reset the board to try new ssid/password
                         if ssid and password:
                             write_wifi_config(ssid, password)
+                            client_s.write(BYE)
+                            client_s.close()
+                            import time
                             import machine
+                            print('rebooting ...')
+                            time.sleep(5.0)
                             machine.reset()
                 # print out html form
                 if req:
@@ -150,7 +168,7 @@ def connect_to_wifi():
     nic.connect(ssid, password)
     # wait some time
     attempt = 0
-    while attempt < 31 and not nic.isconnected():
+    while attempt < 11 and not nic.isconnected():
         print('connecting ...')
         time.sleep(1.0)
         attempt = attempt + 1
