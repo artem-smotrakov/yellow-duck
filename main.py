@@ -180,8 +180,20 @@ def connect_to_wifi():
         print('connection failed')
         return False
 
+def turn_on_wifi_led():
+    from machine import Pin
+    pin = Pin(13, Pin.OUT)
+    pin.high()
+
+def turn_off_wifi_led():
+    from machine import Pin
+    pin = Pin(13, Pin.OUT)
+    pin.low()
+
+# entry point
+turn_off_wifi_led()
 if connect_to_wifi():
-    print('connected to wifi, do something')
+    turn_on_wifi_led()
 else:
     # if we couldn't connect to wifi, then start an access point and a web server
     # to get a correct SSID and password
