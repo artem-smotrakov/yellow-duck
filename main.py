@@ -194,6 +194,15 @@ def turn_off_wifi_led():
 turn_off_wifi_led()
 if connect_to_wifi():
     turn_on_wifi_led()
+    import time
+    import dht
+    import machine
+    d = dht.DHT22(machine.Pin(14))
+    while True:
+        d.measure()
+        print('temperature = %.2f' % d.temperature())
+        print('humidity = %.2f' % d.humidity())
+        time.sleep(5.0)
 else:
     # if we couldn't connect to wifi, then start an access point and a web server
     # to get a correct SSID and password
