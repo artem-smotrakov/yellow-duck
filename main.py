@@ -11,6 +11,7 @@ HTTP/1.0 200 OK
 Hello #%d from MicroPython!
 """
 
+# base on https://github.com/micropython/micropython/blob/master/examples/network/http_server_ssl.py
 def start_local_server(use_stream=True):
     s = socket.socket()
 
@@ -60,4 +61,20 @@ def start_local_server(use_stream=True):
         counter += 1
         print()
 
-start_local_server()
+def start_access_point():
+    import network
+    ap = network.WLAN(network.AP_IF)
+    ap.config(essid='yellow-duck', password='helloduck', authmode=network.AUTH_WPA2_PSK)
+    ap.active(True)
+
+def connect_to_wifi():
+    print('not implemented yet')
+    return False
+
+if connect_to_wifi():
+    print('connected to wifi, do something')
+else:
+    # if we couldn't connect to wifi, then start an access point and a web-server
+    # to get a correct SSID and password
+    start_access_point()
+    start_local_server()
