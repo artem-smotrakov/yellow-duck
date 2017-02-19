@@ -79,6 +79,9 @@ def start_local_server(use_stream=True):
                                 password = param.split('=')[1]
                         if ssid and password:
                             write_wifi_config(ssid, password)
+                            # reset the board to try new ssid/password
+                            import machine
+                            machine.reset()
                 # print html form
                 if req:
                     client_s.write(CONTENT)
@@ -101,8 +104,37 @@ def start_access_point():
     ap.active(True)
 
 def connect_to_wifi():
-    print('not implemented yet')
-    return False
+    import os
+    if not 'wifi.conf' in os.listdir():
+        return False
+    f = open('wifi.conf')
+    data = f.read()
+    f.close()
+    print('wifi.conf data: ' + data)
+    parts = data.split('/')
+    ssid = parts[0]
+    password = parts[1]
+    if not ssid or not password:
+        return False
+    import network
+    import time
+    # enable station interface and connect to WiFi access point
+    print('connect to wifi: %s' % ssid)
+    nic = network.WLAN(network.STA_IF)
+    nic.active(True)
+    nic.connect(ssid, password)
+    attempt = 0
+    while attempt < 10 and not nic.isconnected():
+        print('connecting ...')
+        time.sleep(1.0)
+        attempt = attempt + 1
+
+    if nic.isconnected():
+        print('connected')
+        return True
+    else:
+        print('connection failed')
+        return False
 
 if connect_to_wifi():
     print('connected to wifi, do something')
