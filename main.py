@@ -5,7 +5,7 @@ except:
 import ussl as ssl
 
 
-CONTENT = b"""\
+FORM = b"""\
 HTTP/1.0 200 OK
 
 <html>
@@ -23,51 +23,68 @@ HTTP/1.0 200 OK
 </html>
 """
 
-# base on https://github.com/micropython/micropython/blob/master/examples/network/http_server_ssl.py
-def start_local_server(use_stream=True):
+CONFIG = 'wifi.conf'
+SERVER_PORT=443
+INDENT = '    '
+ACCESS_POINT_SSID='yellow-duck'
+ACCESS_POINT_PASSWORD='helloduck'
+
+# start a web server which asks for wifi ssid/password,
+# and stores it to a config file
+# based on https://github.com/micropython/micropython/blob/master/examples/network/http_server_ssl.py
+def start_local_server(use_stream = True):
     s = socket.socket()
 
-    # Binding to all interfaces - server will be accessible to other hosts!
-    ai = socket.getaddrinfo("0.0.0.0", 8443)
-    print("Bind address info:", ai)
+    # binding to all interfaces - server will be accessible to other hosts!
+    ai = socket.getaddrinfo('0.0.0.0', SERVER_PORT)
+    print('bind address info: ', ai)
     addr = ai[0][-1]
 
     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     s.bind(addr)
     s.listen(5)
-    print("Listening, connect your browser to https://192.168.4.1:8443/")
+    print('server started on https://192.168.4.1:%d/' % SERVER_PORT)
 
+    # main serer loop
     while True:
+        print('waiting for connection ...')
         res = s.accept()
+
         client_s = res[0]
         client_addr = res[1]
-        print("Client address:", client_addr)
-        print("Client socket:", client_s)
+
+        print("client address: ", client_addr)
         client_s = ssl.wrap_socket(client_s, server_side=True)
         print(client_s)
-        print("Request:")
+        print("client request:")
         if use_stream:
-            # Both CPython and MicroPython SSLSocket objects support read() and
-            # write() methods.
-            # Browsers are prone to terminate SSL connection abruptly if they
+            # both CPython and MicroPython SSLSocket objects support read() and
+            # write() methods
+            #
+            # browsers are prone to terminate SSL connection abruptly if they
             # see unknown certificate, etc. We must continue in such case -
             # next request they issue will likely be more well-behaving and
-            # will succeed.
+            # will succeed
             try:
-                req = client_s.readline().decode('utf-8')
-                print(req)
+                req = client_s.readline().decode('utf-8').strip()
+                print(INDENT + req)
+
+                # content lenght
                 length = 0
+
+                # read headers, and look for Content-Length header
                 while True:
                     h = client_s.readline()
                     if h == b"" or h == b"\r\n":
                         break
-                    header = h.decode('utf-8').lower()
+                    header = h.decode('utf-8').strip().lower()
                     if header.startswith('content-length'):
                         length = int(header.split(':')[1])
-                    print(header)
+                    print(INDENT + header)
+
+                # process data from the web form
                 if req.startswith('POST') and length > 0:
                     data = client_s.read(length).decode('utf-8')
-                    print('Data ' + data)
                     if data:
                         params = data.split('&')
                         ssid = None
@@ -77,54 +94,63 @@ def start_local_server(use_stream=True):
                                 ssid = param.split('=')[1]
                             if param.startswith('pass='):
                                 password = param.split('=')[1]
+
+                        # if ssid/password received, store them to a file
+                        # and reset the board to try new ssid/password
                         if ssid and password:
                             write_wifi_config(ssid, password)
-                            # reset the board to try new ssid/password
                             import machine
                             machine.reset()
-                # print html form
+                # print out html form
                 if req:
-                    client_s.write(CONTENT)
+                    client_s.write(FORM)
             except Exception as e:
-                print("Exception serving request:", e)
+                print("exception: ", e)
         else:
             print(client_s.recv(4096))
-            client_s.send(CONTENT)
+            client_s.send(FORM)
+        # close the connection
         client_s.close()
 
+# store ssid/password to a file
 def write_wifi_config(ssid, password):
-    f = open('wifi.conf', 'w')
+    f = open(CONFIG, 'w')
     f.write(ssid + '/' + password)
     f.close()
 
+# start wifi access point
 def start_access_point():
     import network
     ap = network.WLAN(network.AP_IF)
-    ap.config(essid='yellow-duck', password='helloduck', authmode=network.AUTH_WPA2_PSK)
+    ap.config(essid=ACCESS_POINT_SSID, password=ACCESS_POINT_PASSWORD, authmode=network.AUTH_WPA2_PSK)
     ap.active(True)
 
+# read ssid/password from a file, and try to connect
+# returns true in case of successful connection
 def connect_to_wifi():
+    # read ssid/password from a config file
     import os
-    if not 'wifi.conf' in os.listdir():
+    if not CONFIG in os.listdir():
+        print('cannot find ' + CONFIG)
         return False
-    f = open('wifi.conf')
+    f = open(CONFIG)
     data = f.read()
     f.close()
-    print('wifi.conf data: ' + data)
     parts = data.split('/')
     ssid = parts[0]
     password = parts[1]
     if not ssid or not password:
         return False
+    # try to connect
     import network
     import time
-    # enable station interface and connect to WiFi access point
-    print('connect to wifi: %s' % ssid)
+    print('connect to network: %s' % ssid)
     nic = network.WLAN(network.STA_IF)
     nic.active(True)
     nic.connect(ssid, password)
+    # wait some time
     attempt = 0
-    while attempt < 10 and not nic.isconnected():
+    while attempt < 31 and not nic.isconnected():
         print('connecting ...')
         time.sleep(1.0)
         attempt = attempt + 1
@@ -139,7 +165,7 @@ def connect_to_wifi():
 if connect_to_wifi():
     print('connected to wifi, do something')
 else:
-    # if we couldn't connect to wifi, then start an access point and a web-server
+    # if we couldn't connect to wifi, then start an access point and a web server
     # to get a correct SSID and password
     start_access_point()
     start_local_server()
