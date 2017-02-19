@@ -45,20 +45,24 @@ SERVER_PORT=443
 INDENT = '    '
 ACCESS_POINT_SSID='yellow-duck'
 ACCESS_POINT_PASSWORD='helloduck'
+WIFI_LED_PIN=13
+CONFIG_MODE_PIN=5
 
+# returns html response with a form
 def get_form_html():
     if is_config_mode():
         return FORM % CONFIG_MODE_WARNING
     else:
         return FORM % NO_WARNING
 
+# returns html response with a bye message
 def get_bye_html():
     if is_config_mode():
         return BYE % CONFIG_MODE_WARNING
     else:
         return BYE % NO_WARNING
 
-# reboot the board
+# reboot the board with a delay
 def reboot():
     import time
     import machine
@@ -200,19 +204,22 @@ def connect_to_wifi():
         print('connection failed')
         return False
 
+# turns on an LED that indicates wifi connection
 def turn_on_wifi_led():
     from machine import Pin
-    pin = Pin(13, Pin.OUT)
+    pin = Pin(WIFI_LED_PIN, Pin.OUT)
     pin.high()
 
+# turns off an LED that indicates wifi connection
 def turn_off_wifi_led():
     from machine import Pin
-    pin = Pin(13, Pin.OUT)
+    pin = Pin(WIFI_LED_PIN, Pin.OUT)
     pin.low()
 
+# returns true if config mode enabled
 def is_config_mode():
     from machine import Pin
-    pin = Pin(5, Pin.IN)
+    pin = Pin(CONFIG_MODE_PIN, Pin.IN)
     return True if pin.value() == 1 else False
 
 # entry point
