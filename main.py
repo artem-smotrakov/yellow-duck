@@ -41,12 +41,13 @@ HTTP/1.0 200 OK
 """
 
 CONFIG = 'wifi.conf'
-SERVER_PORT=443
+SERVER_PORT = 443
 INDENT = '    '
-ACCESS_POINT_SSID='yellow-duck'
-ACCESS_POINT_PASSWORD='helloduck'
-WIFI_LED_PIN=13
-CONFIG_MODE_PIN=5
+ACCESS_POINT_SSID = 'yellow-duck'
+ACCESS_POINT_PASSWORD = 'helloduck'
+WIFI_LED_PIN = 13
+CONFIG_MODE_PIN = 5
+DHT22_PIN = 14
 
 # returns html response with a form
 def get_form_html():
@@ -237,7 +238,7 @@ if connect_to_wifi():
     import time
     import dht
     import machine
-    d = dht.DHT22(machine.Pin(14))
+    d = dht.DHT22(machine.Pin(DHT22_PIN))
     while True:
         d.measure()
         print('temperature = %.2f' % d.temperature())
