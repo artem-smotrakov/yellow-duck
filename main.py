@@ -4,6 +4,8 @@ except:
     import socket
 import ussl as ssl
 
+CONFIG_MODE_WARNING = "Warning: don't forget to turn off config mode after specifying ssid/password"
+NO_WARNING = ""
 
 FORM = b"""\
 HTTP/1.0 200 OK
@@ -13,6 +15,7 @@ HTTP/1.0 200 OK
   <title>Yellow Duck configuration</title>
  </head>
  <body>
+  <p>%s</p>
   <form method="post">
    Enter SSID and password:</br>
    SSID:&nbsp;<input name="ssid" type="text"/></br>
@@ -31,7 +34,8 @@ HTTP/1.0 200 OK
   <title>Yellow Duck configuration</title>
  </head>
  <body>
-  The board is going to reboot, and try to connect to specified network.
+  <p>%s</p>
+  <p>The board is going to reboot, and try to connect to specified network.</p>
  </body>
 </html>
 """
@@ -41,6 +45,26 @@ SERVER_PORT=443
 INDENT = '    '
 ACCESS_POINT_SSID='yellow-duck'
 ACCESS_POINT_PASSWORD='helloduck'
+
+def get_form_html():
+    if is_config_mode():
+        return FORM % CONFIG_MODE_WARNING
+    else:
+        return FORM % NO_WARNING
+
+def get_bye_html():
+    if is_config_mode():
+        return BYE % CONFIG_MODE_WARNING
+    else:
+        return BYE % NO_WARNING
+
+# reboot the board
+def reboot():
+    import time
+    import machine
+    print('rebooting ...')
+    time.sleep(5.0)
+    machine.reset()
 
 # start a web server which asks for wifi ssid/password,
 # and stores it to a config file
@@ -112,21 +136,17 @@ def start_local_server(use_stream = True):
                         # and reset the board to try new ssid/password
                         if ssid and password:
                             write_wifi_config(ssid, password)
-                            client_s.write(BYE)
+                            client_s.write(get_bye_html())
                             client_s.close()
-                            import time
-                            import machine
-                            print('rebooting ...')
-                            time.sleep(5.0)
-                            machine.reset()
+                            reboot()
                 # print out html form
                 if req:
-                    client_s.write(FORM)
+                    client_s.write(get_form_html())
             except Exception as e:
                 print("exception: ", e)
         else:
             print(client_s.recv(4096))
-            client_s.send(FORM)
+            client_s.send(get_form_html())
         # close the connection
         client_s.close()
 
@@ -190,8 +210,21 @@ def turn_off_wifi_led():
     pin = Pin(13, Pin.OUT)
     pin.low()
 
+def is_config_mode():
+    from machine import Pin
+    pin = Pin(5, Pin.IN)
+    return True if pin.value() == 1 else False
+
 # entry point
 turn_off_wifi_led()
+
+# check if we're in configuration mode
+if is_config_mode():
+    print('enabled configuration mode')
+    start_access_point()
+    start_local_server()
+    reboot()
+
 if connect_to_wifi():
     turn_on_wifi_led()
     import time
