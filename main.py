@@ -40,6 +40,17 @@ HTTP/1.0 200 OK
 </html>
 """
 
+THINGSPEAK_POST_TEMPLATE = """
+POST /update HTTP/1.1
+Host: api.thingspeak.com
+Connection: close
+X-THINGSPEAKAPIKEY: %s
+Content-Type: application/x-www-form-urlencoded
+Content-Length: %d
+
+%s
+"""
+
 CONFIG = 'wifi.conf'
 SERVER_PORT = 443
 INDENT = '    '
@@ -48,6 +59,11 @@ ACCESS_POINT_PASSWORD = 'helloduck'
 WIFI_LED_PIN = 13
 CONFIG_MODE_PIN = 5
 DHT22_PIN = 14
+API_THINGSPEAK_HOST = 'api.thingspeak.com'
+API_THINGSPEAK_PORT = 443
+THINGSPEAK_TEMPERATURE_KEY = ''
+MESUREMENT_INTERVAL = 4 # in seconds
+DELAY = 5 # in seconds
 
 # returns html response with a form
 def get_form_html():
@@ -233,17 +249,35 @@ if is_config_mode():
     start_local_server()
     reboot()
 
-if connect_to_wifi():
-    turn_on_wifi_led()
-    import time
+def mesure_temperature_and_humidity():
     import dht
     import machine
     d = dht.DHT22(machine.Pin(DHT22_PIN))
+    d.measure()
+    t = d.temperature()
+    h = d.humidity()
+    print('temperature = %.2f' % t)
+    print('humidity    = %.2f' % h)
+    s = socket.socket()
+    ai = socket.getaddrinfo(API_THINGSPEAK_HOST, API_THINGSPEAK_PORT)
+    addr = ai[0][-1]
+    s.connect(addr)
+    s = ssl.wrap_socket(s)
+    data = 'field1=%.2f&field2=%.2f' % (t, h)
+    http_data = THINGSPEAK_POST_TEMPLATE % (THINGSPEAK_TEMPERATURE_KEY, len(data), data)
+    s.write(http_data.encode())
+    s.close()
+
+if connect_to_wifi():
+    turn_on_wifi_led()
+    import time
+    last_mesurement_time = time.time()
     while True:
-        d.measure()
-        print('temperature = %.2f' % d.temperature())
-        print('humidity = %.2f' % d.humidity())
-        time.sleep(5.0)
+        current_time = time.time()
+        if current_time - last_mesurement_time > MESUREMENT_INTERVAL:
+            mesure_temperature_and_humidity()
+            last_mesurement_time = current_time
+        time.sleep(DELAY)
 else:
     # if we couldn't connect to wifi, then start an access point and a web server
     # to get a correct SSID and password
