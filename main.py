@@ -68,7 +68,7 @@ DHT22_PIN = 14
 API_THINGSPEAK_HOST = 'api.thingspeak.com'
 API_THINGSPEAK_PORT = 443
 THINGSPEAK_WRITE_KEY = None
-MESUREMENT_INTERVAL = 4 # in seconds
+MESUREMENT_INTERVAL = 300 # in seconds, TODO: read this from a config file
 DELAY = 5 # in seconds
 
 # returns html response with a form
