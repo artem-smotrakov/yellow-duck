@@ -4,7 +4,7 @@ except:
     import socket
 import ussl as ssl
 
-CONFIG_MODE_WARNING = "Warning: don't forget to turn off config mode after specifying ssid/password"
+CONFIG_MODE_WARNING = "Warning: don't forget to turn off config mode"
 NO_WARNING = ""
 
 FORM = b"""\
@@ -20,6 +20,11 @@ HTTP/1.0 200 OK
    Enter SSID and password:</br>
    SSID:&nbsp;<input name="ssid" type="text"/></br>
    Password:&nbsp;<input name="pass" type="password"/></br>
+   <input type="submit" value="Submit">
+  </form>
+  <form method="post">
+   Enter ThingSpeak key:</br>
+   Key:&nbsp;<input name="key" type="text"/></br>
    <input type="submit" value="Submit">
   </form>
  </body>
@@ -51,7 +56,8 @@ Content-Length: %d
 %s
 """
 
-CONFIG = 'wifi.conf'
+WIFI_CONFIG = 'wifi.conf'
+THINGSPEAK_CONFIG = 'thingspeak.conf'
 SERVER_PORT = 443
 INDENT = '    '
 ACCESS_POINT_SSID = 'yellow-duck'
@@ -61,7 +67,7 @@ CONFIG_MODE_PIN = 5
 DHT22_PIN = 14
 API_THINGSPEAK_HOST = 'api.thingspeak.com'
 API_THINGSPEAK_PORT = 443
-THINGSPEAK_TEMPERATURE_KEY = ''
+THINGSPEAK_WRITE_KEY = None
 MESUREMENT_INTERVAL = 4 # in seconds
 DELAY = 5 # in seconds
 
@@ -147,11 +153,14 @@ def start_local_server(use_stream = True):
                         params = data.split('&')
                         ssid = None
                         password = None
+                        key = None
                         for param in params:
                             if param.startswith('ssid='):
                                 ssid = param.split('=')[1]
                             if param.startswith('pass='):
                                 password = param.split('=')[1]
+                            if param.startswith('key='):
+                                key = param.split('=')[1]
 
                         # if ssid/password received, store them to a file
                         # and reset the board to try new ssid/password
@@ -160,6 +169,15 @@ def start_local_server(use_stream = True):
                             client_s.write(get_bye_html())
                             client_s.close()
                             reboot()
+
+                        # if ThingSpeak key received, store it to a file
+                        # and resent to board
+                        if key:
+                            write_thingspeak_config(key)
+                            client_s.write(get_bye_html())
+                            client_s.close()
+                            reboot()
+
                 # print out html form
                 if req:
                     client_s.write(get_form_html())
@@ -173,8 +191,24 @@ def start_local_server(use_stream = True):
 
 # store ssid/password to a file
 def write_wifi_config(ssid, password):
-    f = open(CONFIG, 'w')
+    f = open(WIFI_CONFIG, 'w')
     f.write(ssid + '/' + password)
+    f.close()
+
+# store ThingSpeak key to a file
+def write_thingspeak_config(key):
+    f = open(THINGSPEAK_CONFIG, 'w')
+    f.write(key)
+    f.close()
+
+def thingspeak_init():
+    import os
+    global THINGSPEAK_WRITE_KEY
+    if not THINGSPEAK_CONFIG in os.listdir():
+        print('cannot find ' + THINGSPEAK_CONFIG)
+        return
+    f = open(THINGSPEAK_CONFIG)
+    THINGSPEAK_WRITE_KEY = f.read()
     f.close()
 
 # start wifi access point
@@ -189,10 +223,10 @@ def start_access_point():
 def connect_to_wifi():
     # read ssid/password from a config file
     import os
-    if not CONFIG in os.listdir():
-        print('cannot find ' + CONFIG)
+    if not WIFI_CONFIG in os.listdir():
+        print('cannot find ' + WIFI_CONFIG)
         return False
-    f = open(CONFIG)
+    f = open(WIFI_CONFIG)
     data = f.read()
     f.close()
     parts = data.split('/')
@@ -258,18 +292,24 @@ def mesure_temperature_and_humidity():
     h = d.humidity()
     print('temperature = %.2f' % t)
     print('humidity    = %.2f' % h)
+    global THINGSPEAK_WRITE_KEY
+    if not THINGSPEAK_WRITE_KEY:
+        print('not ThingSpeak key specified, skip sending data')
+        return
+    print('send data to ThingSpeak')
     s = socket.socket()
     ai = socket.getaddrinfo(API_THINGSPEAK_HOST, API_THINGSPEAK_PORT)
     addr = ai[0][-1]
     s.connect(addr)
     s = ssl.wrap_socket(s)
     data = 'field1=%.2f&field2=%.2f' % (t, h)
-    http_data = THINGSPEAK_POST_TEMPLATE % (THINGSPEAK_TEMPERATURE_KEY, len(data), data)
+    http_data = THINGSPEAK_POST_TEMPLATE % (THINGSPEAK_WRITE_KEY, len(data), data)
     s.write(http_data.encode())
     s.close()
 
 if connect_to_wifi():
     turn_on_wifi_led()
+    thingspeak_init()
     import time
     last_mesurement_time = time.time()
     while True:
