@@ -4,9 +4,17 @@ except:
     import socket
 import ussl as ssl
 
+# even if SSL/TLS is used here, MicroPython for ESP8260 doesn't support
+# validation of server certificate (at least, v1.8.7)
+# so, we're relatively safe if an adversary can just eavesdrop the connection
+# because all data should be encrypted
+# but if an adversary can modify the trafic, then we're in a trouble
+# because server certificate may be replaced in this case
+
 CONFIG_MODE_WARNING = "Warning: don't forget to turn off config mode"
 NO_WARNING = ""
 
+# an HTTP response which contains a page with HTML forms with settings
 FORM = b"""\
 HTTP/1.0 200 OK
 
@@ -45,6 +53,7 @@ HTTP/1.0 200 OK
 </html>
 """
 
+# a template of HTTP request to ThingSpeak to post temperature and humidity
 THINGSPEAK_POST_TEMPLATE = """
 POST /update HTTP/1.1
 Host: api.thingspeak.com
@@ -68,33 +77,40 @@ DHT22_PIN = 14
 API_THINGSPEAK_HOST = 'api.thingspeak.com'
 API_THINGSPEAK_PORT = 443
 THINGSPEAK_WRITE_KEY = None
-MESUREMENT_INTERVAL = 300 # in seconds, TODO: read this from a config file
-DELAY = 5 # in seconds
 
-# returns html response with a form
+# timings in seconds
+MESUREMENT_INTERVAL = 300 # TODO: read this from a config file
+DELAY = 5
+REBOOT_DELAY = 5
+
+# returns an HTTP response with a form
 def get_form_html():
     if is_config_mode():
         return FORM % CONFIG_MODE_WARNING
     else:
         return FORM % NO_WARNING
 
-# returns html response with a bye message
+# returns an HTTP response with a bye message
 def get_bye_html():
     if is_config_mode():
         return BYE % CONFIG_MODE_WARNING
     else:
         return BYE % NO_WARNING
 
-# reboot the board with a delay
+# reboot the board after some delay
 def reboot():
     import time
     import machine
     print('rebooting ...')
-    time.sleep(5.0)
+    time.sleep(REBOOT_DELAY)
     machine.reset()
 
-# start a web server which asks for wifi ssid/password,
-# and stores it to a config file
+# start a web server which asks for wifi ssid/password, and other settings
+# it stores settings to a config file
+# it's a very simple web server
+# it assumes that it's running in safe environment for a short period of time,
+# so it doesn't check much input data
+#
 # based on https://github.com/micropython/micropython/blob/master/examples/network/http_server_ssl.py
 def start_local_server(use_stream = True):
     s = socket.socket()
@@ -120,6 +136,7 @@ def start_local_server(use_stream = True):
         print("client address: ", client_addr)
         client_s = ssl.wrap_socket(client_s, server_side=True)
         print(client_s)
+
         print("client request:")
         if use_stream:
             # both CPython and MicroPython SSLSocket objects support read() and
@@ -133,7 +150,7 @@ def start_local_server(use_stream = True):
                 req = client_s.readline().decode('utf-8').strip()
                 print(INDENT + req)
 
-                # content lenght
+                # content length
                 length = 0
 
                 # read headers, and look for Content-Length header
@@ -186,6 +203,7 @@ def start_local_server(use_stream = True):
         else:
             print(client_s.recv(4096))
             client_s.send(get_form_html())
+
         # close the connection
         client_s.close()
 
@@ -226,6 +244,7 @@ def connect_to_wifi():
     if not WIFI_CONFIG in os.listdir():
         print('cannot find ' + WIFI_CONFIG)
         return False
+
     f = open(WIFI_CONFIG)
     data = f.read()
     f.close()
@@ -233,14 +252,17 @@ def connect_to_wifi():
     ssid = parts[0]
     password = parts[1]
     if not ssid or not password:
+        print('could not find ssid/password in config file')
         return False
+
     # try to connect
     import network
     import time
-    print('connect to network: %s' % ssid)
+    print('connecting to network: %s' % ssid)
     nic = network.WLAN(network.STA_IF)
     nic.active(True)
     nic.connect(ssid, password)
+
     # wait some time
     attempt = 0
     while attempt < 11 and not nic.isconnected():
@@ -273,16 +295,7 @@ def is_config_mode():
     pin = Pin(CONFIG_MODE_PIN, Pin.IN)
     return True if pin.value() == 1 else False
 
-# entry point
-turn_off_wifi_led()
-
-# check if we're in configuration mode
-if is_config_mode():
-    print('enabled configuration mode')
-    start_access_point()
-    start_local_server()
-    reboot()
-
+# mesures temperature and humidity with DHT22 sensor, and sends the data to ThingSpeak
 def mesure_temperature_and_humidity():
     import dht
     import machine
@@ -292,10 +305,12 @@ def mesure_temperature_and_humidity():
     h = d.humidity()
     print('temperature = %.2f' % t)
     print('humidity    = %.2f' % h)
+
     global THINGSPEAK_WRITE_KEY
     if not THINGSPEAK_WRITE_KEY:
         print('not ThingSpeak key specified, skip sending data')
         return
+
     print('send data to ThingSpeak')
     s = socket.socket()
     ai = socket.getaddrinfo(API_THINGSPEAK_HOST, API_THINGSPEAK_PORT)
@@ -307,11 +322,29 @@ def mesure_temperature_and_humidity():
     s.write(http_data.encode())
     s.close()
 
+
+
+
+
+# entry point
+turn_off_wifi_led()
+
+# check if we're in configuration mode
+if is_config_mode():
+    print('enabled configuration mode')
+    start_access_point()
+    start_local_server()
+    reboot()
+
 if connect_to_wifi():
     turn_on_wifi_led()
     thingspeak_init()
     import time
     last_mesurement_time = time.time()
+
+    # main loop
+    # TODO: check in a loop if we're still connected to wifi
+    #       if not, turn off the LED
     while True:
         current_time = time.time()
         if current_time - last_mesurement_time > MESUREMENT_INTERVAL:
@@ -319,7 +352,7 @@ if connect_to_wifi():
             last_mesurement_time = current_time
         time.sleep(DELAY)
 else:
-    # if we couldn't connect to wifi, then start an access point and a web server
+    # if we couldn't connect to wifi, then start an access point with a web server
     # to get a correct SSID and password
     start_access_point()
     start_local_server()
